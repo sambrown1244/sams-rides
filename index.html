@@ -7,14 +7,16 @@
 <title>Sam's Rides</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14'/%3E%3Ctext x='32' y='44' font-family='Arial' font-weight='800' font-size='34' fill='white' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
 <script src="config.js"></script>
 </head>
 <body>
 <div class="app">
-  <div class="map" aria-hidden="true">
-    <canvas id="map"></canvas>
+  <div class="map">
+    <div id="leaflet"></div>
     <div class="topbar">
       <div class="brand">Sam's Rides</div>
       <div class="eta-pill"><span class="dot"></span><span id="etaPill">Sam is nearby</span></div>
@@ -155,48 +157,81 @@ const store = {
 const TRIP_LABEL = { round: "There & back", to: "To the party", home: "Home after the party" };
 const PARTY_FULL = `${CFG.PARTY_NAME} (${CFG.PARTY_ADDR})`;
 
-/* ---------- map ---------- */
-const canvas = $("map");
-const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-let carT = 0;
-function seeded(n) { let s = n; return () => (s = (s * 9301 + 49297) % 233280) / 233280; }
-function drawMap() {
-  const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
-  canvas.width = r.width * dpr; canvas.height = r.height * dpr;
-  const c = canvas.getContext("2d"); c.scale(dpr, dpr);
-  const W = r.width, H = r.height, rnd = seeded(7), step = 58;
-  c.fillStyle = css("--map"); c.fillRect(0, 0, W, H);
-  for (let x = -20; x < W; x += step) for (let y = -20; y < H; y += step) {
-    c.fillStyle = rnd() < 0.08 ? css("--map-park") : css("--map-block");
-    c.beginPath(); c.roundRect(x + 7, y + 7, step - 14, step - 14, 4); c.fill();
-  }
-  c.strokeStyle = css("--map-water"); c.lineWidth = 26; c.lineCap = "round";
-  c.beginPath(); c.moveTo(W * 0.72, -10); c.bezierCurveTo(W * 0.6, H * .4, W * 0.95, H * .6, W * 0.82, H + 10); c.stroke();
-  c.strokeStyle = css("--map-road"); c.lineWidth = 8;
-  for (let x = -20; x < W; x += step) { c.beginPath(); c.moveTo(x + 3, 0); c.lineTo(x + 3, H); c.stroke(); }
-  for (let y = -20; y < H; y += step) { c.beginPath(); c.moveTo(0, y + 3); c.lineTo(W, y + 3); c.stroke(); }
-  c.lineWidth = 14; c.beginPath(); c.moveTo(0, H * 0.78); c.lineTo(W, H * 0.3); c.stroke();
-  const A = { x: W * 0.22, y: H * 0.62 }, B = { x: W * 0.64, y: H * 0.34 };
-  c.strokeStyle = css("--fg"); c.lineWidth = 5; c.lineJoin = "round";
-  c.beginPath(); c.moveTo(A.x, A.y); c.lineTo(A.x, B.y + 30); c.lineTo(B.x - 30, B.y + 30); c.lineTo(B.x, B.y); c.stroke();
-  c.fillStyle = css("--fg"); c.beginPath(); c.arc(A.x, A.y, 9, 0, 7); c.fill();
-  c.fillStyle = css("--bg"); c.beginPath(); c.arc(A.x, A.y, 3.5, 0, 7); c.fill();
-  c.fillStyle = css("--fg"); c.fillRect(B.x - 8, B.y - 8, 16, 16);
-  c.fillStyle = css("--bg"); c.fillRect(B.x - 3, B.y - 3, 6, 6);
-  c.font = "700 12px Figtree, sans-serif";
-  const label = (t, x, y) => { const w = c.measureText(t).width + 16; c.fillStyle = css("--bg"); c.beginPath(); c.roundRect(x, y, w, 24, 6); c.fill(); c.fillStyle = css("--fg"); c.fillText(t, x + 8, y + 16); };
-  label(state.dir === "home" ? "Party" : "Home", A.x - 26, A.y + 14);
-  label(state.dir === "home" ? "Home" : "Party", B.x - 20, B.y - 38);
-  const t = (Math.sin(carT) + 1) / 2, cx = W * 0.1 + t * W * 0.25, cy = H * 0.78 - (cx / W) * (H * 0.48);
-  c.save(); c.translate(cx, cy); c.rotate(-Math.atan((H * 0.48) / W));
-  c.fillStyle = css("--fg"); c.beginPath(); c.roundRect(-11, -6, 22, 12, 3); c.fill();
-  c.fillStyle = css("--bg"); c.fillRect(2, -4, 5, 8);
-  c.restore();
-}
+/* ---------- real map: party pin, their house pin, driving route ---------- */
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-function tick() { carT += 0.012; drawMap(); if (!reduce) requestAnimationFrame(tick); }
-addEventListener("resize", drawMap);
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawMap);
+const PARTY_LL = [CFG.PARTY_LAT, CFG.PARTY_LON];
+let map = null, homeMarker = null, routeLine = null, routeSeq = 0;
+
+function pinIcon(kind, label) {
+  return L.divIcon({
+    className: "",
+    html: `<div class="mpin ${kind}"><span class="mlabel">${label}</span></div>`,
+    iconSize: [18, 18], iconAnchor: [9, 9]
+  });
+}
+function initMap() {
+  if (!window.L) return; // map library didn't load: the gray map area still works as a backdrop
+  map = L.map("leaflet", { zoomControl: false, scrollWheelZoom: false, tap: true }).setView(PARTY_LL, 14);
+  map.attributionControl.setPrefix(false);
+  // OpenStreetMap's free tiles, grayed out in styles.css for the ride-app look.
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  }).addTo(map);
+  L.marker(PARTY_LL, { icon: pinIcon("sq", "Party"), keyboard: false }).addTo(map);
+}
+
+function fmtDrive(sec, meters) {
+  const min = Math.max(1, Math.round(sec / 60)), mi = meters / 1609.34;
+  const t = min >= 60 ? `${Math.floor(min / 60)} hr ${min % 60} min` : `${min} min`;
+  return `${t} · ${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
+}
+
+async function setHome(lat, lon) {
+  state.coords = { lat, lon, for: state.address };
+  store.set("sr_coords", JSON.stringify(state.coords));
+  if (!map) return;
+  const ll = [lat, lon];
+  if (homeMarker) homeMarker.setLatLng(ll); else homeMarker = L.marker(ll, { icon: pinIcon("dot", "Home"), keyboard: false }).addTo(map);
+  const bounds = L.latLngBounds([ll, PARTY_LL]);
+  map.fitBounds(bounds, { paddingTopLeft: [40, 70], paddingBottomRight: [40, 40], maxZoom: 15, animate: !reduce });
+
+  const seq = ++routeSeq;
+  let path = [ll, PARTY_LL];
+  try {
+    const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${lon},${lat};${CFG.PARTY_LON},${CFG.PARTY_LAT}?overview=full&geometries=geojson`);
+    const j = await res.json();
+    if (seq !== routeSeq) return;
+    if (j.code === "Ok" && j.routes[0]) {
+      path = j.routes[0].geometry.coordinates.map(([x, y]) => [y, x]);
+      $("etaPill").textContent = fmtDrive(j.routes[0].duration, j.routes[0].distance);
+    }
+  } catch {}
+  if (seq !== routeSeq) return;
+  if (routeLine) routeLine.remove();
+  routeLine = L.polyline(path, { color: getComputedStyle(document.documentElement).getPropertyValue("--fg").trim(), weight: 5, opacity: .9 }).addTo(map);
+  routeLine.bringToBack();
+}
+
+function clearHome() {
+  state.coords = null; routeSeq++;
+  if (homeMarker) { homeMarker.remove(); homeMarker = null; }
+  if (routeLine) { routeLine.remove(); routeLine = null; }
+  $("etaPill").textContent = "Sam is nearby";
+  if (map) map.setView(PARTY_LL, 14, { animate: !reduce });
+}
+
+/* Look up a typed address that wasn't picked from the list. */
+async function geocodeTyped() {
+  const q = state.address.trim();
+  if (q.length < 6 || (state.coords && state.coords.for === q)) return;
+  try {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q + " Arkansas")}&limit=5&lang=en&lat=${CFG.PARTY_LAT}&lon=${CFG.PARTY_LON}&bbox=-94.62,33.00,-89.64,36.50`;
+    const j = await (await fetch(url)).json();
+    const f = (j.features || []).find(f => f.properties && f.properties.state === "Arkansas");
+    if (f && state.address.trim() === q) setHome(f.geometry.coordinates[1], f.geometry.coordinates[0]);
+  } catch {}
+}
 
 /* ---------- address autocomplete (Arkansas only) ---------- */
 const AR_BBOX = "-94.62,33.00,-89.64,36.50";
@@ -226,7 +261,11 @@ async function fetchSuggestions(q) {
     const seen = new Set(), out = [];
     for (const f of data.features || []) {
       const s = formatPlace(f.properties || {}, typedNum);
-      if (s && !seen.has(s.full)) { seen.add(s.full); out.push(s); }
+      if (s && !seen.has(s.full)) {
+        seen.add(s.full);
+        [s.lon, s.lat] = f.geometry.coordinates;
+        out.push(s);
+      }
       if (out.length >= 5) break;
     }
     showSuggestions(out);
@@ -263,6 +302,7 @@ function pickSuggestion(i) {
   a.value = s.full;
   state.address = a.value; store.set("sr_addr", a.value);
   showSuggestions([]);
+  setHome(s.lat, s.lon);
   if (!s.hasNum) { a.focus(); a.setSelectionRange(0, 0); toast("Add your house number at the start"); }
 }
 
@@ -275,6 +315,7 @@ function wireAddress(a) {
     state.address = a.value; store.set("sr_addr", a.value);
     clearTimeout(suggestTimer);
     const q = a.value.trim();
+    if (state.coords && state.coords.for !== a.value) clearHome();
     if (q.length < 4) { suggestSeq++; showSuggestions([]); return; }
     suggestTimer = setTimeout(() => fetchSuggestions(q), 300);
   });
@@ -291,7 +332,7 @@ function wireAddress(a) {
       showSuggestions([]);
     }
   });
-  a.addEventListener("blur", () => setTimeout(() => showSuggestions([]), 150));
+  a.addEventListener("blur", () => setTimeout(() => { showSuggestions([]); geocodeTyped(); }, 200));
 }
 
 /* ---------- form ---------- */
@@ -311,7 +352,6 @@ function renderRoute() {
   $("whenLabel").textContent = state.dir === "round" ? "Pickup to the party" : "When";
   $("requestBtn").textContent = { round: "Request there & back", to: "Request Sam X", home: "Request a ride home" }[state.dir];
   $("optMeta").textContent = { round: "Door to door · both ways", to: "Door to door · straight to the party", home: "Door to door · home safe" }[state.dir];
-  drawMap();
 }
 $("dirRound").onclick = () => { state.dir = "round"; renderRoute(); };
 $("dirTo").onclick = () => { state.dir = "to"; renderRoute(); };
@@ -399,6 +439,7 @@ $("book").addEventListener("submit", async e => {
   current = {
     id: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(36).slice(2)),
     name, address, trip: state.dir, riders: state.riders,
+    lat: state.coords ? state.coords.lat : "", lon: state.coords ? state.coords.lon : "",
     phone: $("phone").value.trim(), note: $("note").value.trim(),
     pickupTime: state.when === "now" ? "As soon as you can" : fmtTime($("time").value || "18:00"),
     returnTime: state.dir !== "round" ? "" : state.ret === "text" ? "Will text when ready" : fmtTime($("returnTime").value || "21:00")
@@ -457,7 +498,10 @@ function showResult(result) {
   }
 }
 
-$("back").onclick = () => { $("confirm").hidden = true; $("book").hidden = false; $("etaPill").textContent = "Sam is nearby"; };
+$("back").onclick = () => {
+  $("confirm").hidden = true; $("book").hidden = false;
+  if (state.coords) setHome(state.coords.lat, state.coords.lon); else $("etaPill").textContent = "Sam is nearby";
+};
 
 function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2000); }
 function legacyCopy(text) {
@@ -484,7 +528,11 @@ $("phone").value = store.get("sr_phone");
 state.address = store.get("sr_addr");
 if ($("name").value) $("greet").textContent = `Hi ${$("name").value.split(" ")[0]}, where to?`;
 renderRoute();
-tick();
+initMap();
+try {
+  const c = JSON.parse(store.get("sr_coords") || "null");
+  if (c && c.for === state.address) setHome(c.lat, c.lon);
+} catch {}
 </script>
 </body>
 </html>
