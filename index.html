@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Sam's Rides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14'/%3E%3Ctext x='32' y='44' font-family='Arial' font-weight='800' font-size='34' fill='white' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
+<script src="config.js"></script>
+</head>
+<body>
+<div class="app">
+  <div class="map" aria-hidden="true">
+    <canvas id="map"></canvas>
+    <div class="topbar">
+      <div class="brand">Sam's Rides</div>
+      <div class="eta-pill"><span class="dot"></span><span id="etaPill">Sam is nearby</span></div>
+    </div>
+  </div>
+
+  <!-- Booking screen -->
+  <form class="sheet" id="book" novalidate autocomplete="on">
+    <div class="grab"></div>
+    <h1 id="greet">Where to?</h1>
+    <p class="sub">Free rides to and from the party. Driven by Sam.</p>
+
+    <div class="seg" role="group" aria-label="Trip">
+      <button type="button" id="dirRound" aria-pressed="true"><span class="tag">Most popular</span><b>There &amp; back</b><span>To the party and home</span></button>
+      <button type="button" id="dirTo" aria-pressed="false"><b>To the party</b><span>Pick me up at home</span></button>
+      <button type="button" id="dirHome" aria-pressed="false"><b>Home after</b><span>Take me home</span></button>
+    </div>
+
+    <div class="route">
+      <div class="rail" id="rail"></div>
+      <div class="rows" id="routeRows"></div>
+    </div>
+
+    <div class="field" id="returnWrap">
+      <span class="lbl">Ride home</span>
+      <div class="chips" role="group" aria-label="Ride home">
+        <button type="button" id="retText" aria-pressed="true">I'll text you</button>
+        <button type="button" id="retTime" aria-pressed="false">Pick a time</button>
+      </div>
+      <div class="time-input" id="retTimeWrap" hidden>
+        <input type="time" id="returnTime" value="21:00" aria-label="Ride home time">
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="name">Your name</label>
+      <input type="text" id="name" autocomplete="name" placeholder="e.g. Linda">
+    </div>
+
+    <div class="field">
+      <label for="phone">Your phone <span class="opt">(so Sam can text you back)</span></label>
+      <input type="tel" id="phone" autocomplete="tel" placeholder="(501) 555-0123">
+    </div>
+
+    <div class="field">
+      <span class="lbl" id="whenLabel">When</span>
+      <div class="chips" role="group" aria-label="When">
+        <button type="button" id="whenNow" aria-pressed="true">Now</button>
+        <button type="button" id="whenLater" aria-pressed="false">Schedule</button>
+      </div>
+      <div class="time-input" id="timeWrap" hidden>
+        <input type="time" id="time" value="18:00" aria-label="Pickup time">
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="lbl">Riders</span>
+      <div class="riders">
+        <button type="button" id="minus" aria-label="Fewer riders">−</button>
+        <output id="count">1</output>
+        <button type="button" id="plus" aria-label="More riders">+</button>
+        <span class="hint">Up to 4</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="note">Note for Sam <span class="opt">(optional)</span></label>
+      <textarea id="note" placeholder="Gate code, which door, bringing a casserole…"></textarea>
+    </div>
+
+    <div class="field">
+      <span class="lbl">Ride</span>
+      <div class="option">
+        <svg viewBox="0 0 72 36" width="72" height="36" aria-hidden="true">
+          <path d="M8 24 L12 14 Q14 10 20 10 L46 10 Q52 10 56 14 L62 20 Q68 21 68 26 L68 28 L4 28 L4 26 Q4 24 8 24 Z" fill="var(--fg)"/>
+          <path d="M18 14 L30 14 L30 20 L14 20 Z M33 14 L45 14 Q49 14 52 20 L33 20 Z" fill="var(--chip)"/>
+          <circle cx="18" cy="28" r="5" fill="var(--fg)" stroke="var(--bg)" stroke-width="2"/>
+          <circle cx="54" cy="28" r="5" fill="var(--fg)" stroke="var(--bg)" stroke-width="2"/>
+        </svg>
+        <div>
+          <div class="name">Sam X <span class="seat">👤 4</span></div>
+          <div class="meta" id="optMeta">Door to door</div>
+        </div>
+        <div class="price">$0.00<small>Party special</small></div>
+      </div>
+    </div>
+
+    <div class="cta">
+      <button type="submit" class="btn" id="requestBtn">Request there &amp; back</button>
+      <p class="err" id="err" hidden></p>
+    </div>
+  </form>
+
+  <!-- Confirmation screen -->
+  <section class="sheet" id="confirm" hidden>
+    <div class="grab"></div>
+    <div class="status" id="status">
+      <div class="spin"></div>
+      <h1 id="confirmTitle" style="font-size:24px">Sending your request…</h1>
+    </div>
+    <div class="progress" id="progress"><i></i></div>
+    <p class="sub" id="confirmSub" style="margin:0">Hang tight, this takes a second.</p>
+
+    <div class="driver">
+      <div class="avatar">S</div>
+      <div>
+        <div class="dn">Sam</div>
+        <div class="dm">★ 5.00 · Your driver tonight</div>
+      </div>
+      <div class="plate">PARTY</div>
+    </div>
+
+    <!-- Shown when the booking couldn't be saved: texting is the way through -->
+    <div id="textPanel" hidden style="display:grid;gap:12px">
+      <a class="btn" id="smsLink" href="#">Text my request to Sam</a>
+      <div class="number"><strong id="numText"></strong><button type="button" class="mini" id="copyNum">Copy</button></div>
+      <button type="button" class="btn ghost" id="copyMsg">Copy my request</button>
+      <div class="msgbox" id="msg"></div>
+    </div>
+
+    <!-- Shown after a saved booking: optional heads-up text -->
+    <a class="btn ghost" id="smsExtra" href="#" hidden>Text Sam a heads-up too</a>
+
+    <dl class="receipt" id="receipt"></dl>
+    <button type="button" class="btn ghost" id="back">Book another ride</button>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const CFG = window.SAMS_RIDES;
+const $ = id => document.getElementById(id);
+const state = { dir: "round", when: "now", ret: "text", riders: 1, address: "" };
+const store = {
+  get(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} }
+};
+const TRIP_LABEL = { round: "There & back", to: "To the party", home: "Home after the party" };
+const PARTY_FULL = `${CFG.PARTY_NAME} (${CFG.PARTY_ADDR})`;
+
+/* ---------- map ---------- */
+const canvas = $("map");
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+let carT = 0;
+function seeded(n) { let s = n; return () => (s = (s * 9301 + 49297) % 233280) / 233280; }
+function drawMap() {
+  const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  canvas.width = r.width * dpr; canvas.height = r.height * dpr;
+  const c = canvas.getContext("2d"); c.scale(dpr, dpr);
+  const W = r.width, H = r.height, rnd = seeded(7), step = 58;
+  c.fillStyle = css("--map"); c.fillRect(0, 0, W, H);
+  for (let x = -20; x < W; x += step) for (let y = -20; y < H; y += step) {
+    c.fillStyle = rnd() < 0.08 ? css("--map-park") : css("--map-block");
+    c.beginPath(); c.roundRect(x + 7, y + 7, step - 14, step - 14, 4); c.fill();
+  }
+  c.strokeStyle = css("--map-water"); c.lineWidth = 26; c.lineCap = "round";
+  c.beginPath(); c.moveTo(W * 0.72, -10); c.bezierCurveTo(W * 0.6, H * .4, W * 0.95, H * .6, W * 0.82, H + 10); c.stroke();
+  c.strokeStyle = css("--map-road"); c.lineWidth = 8;
+  for (let x = -20; x < W; x += step) { c.beginPath(); c.moveTo(x + 3, 0); c.lineTo(x + 3, H); c.stroke(); }
+  for (let y = -20; y < H; y += step) { c.beginPath(); c.moveTo(0, y + 3); c.lineTo(W, y + 3); c.stroke(); }
+  c.lineWidth = 14; c.beginPath(); c.moveTo(0, H * 0.78); c.lineTo(W, H * 0.3); c.stroke();
+  const A = { x: W * 0.22, y: H * 0.62 }, B = { x: W * 0.64, y: H * 0.34 };
+  c.strokeStyle = css("--fg"); c.lineWidth = 5; c.lineJoin = "round";
+  c.beginPath(); c.moveTo(A.x, A.y); c.lineTo(A.x, B.y + 30); c.lineTo(B.x - 30, B.y + 30); c.lineTo(B.x, B.y); c.stroke();
+  c.fillStyle = css("--fg"); c.beginPath(); c.arc(A.x, A.y, 9, 0, 7); c.fill();
+  c.fillStyle = css("--bg"); c.beginPath(); c.arc(A.x, A.y, 3.5, 0, 7); c.fill();
+  c.fillStyle = css("--fg"); c.fillRect(B.x - 8, B.y - 8, 16, 16);
+  c.fillStyle = css("--bg"); c.fillRect(B.x - 3, B.y - 3, 6, 6);
+  c.font = "700 12px Figtree, sans-serif";
+  const label = (t, x, y) => { const w = c.measureText(t).width + 16; c.fillStyle = css("--bg"); c.beginPath(); c.roundRect(x, y, w, 24, 6); c.fill(); c.fillStyle = css("--fg"); c.fillText(t, x + 8, y + 16); };
+  label(state.dir === "home" ? "Party" : "Home", A.x - 26, A.y + 14);
+  label(state.dir === "home" ? "Home" : "Party", B.x - 20, B.y - 38);
+  const t = (Math.sin(carT) + 1) / 2, cx = W * 0.1 + t * W * 0.25, cy = H * 0.78 - (cx / W) * (H * 0.48);
+  c.save(); c.translate(cx, cy); c.rotate(-Math.atan((H * 0.48) / W));
+  c.fillStyle = css("--fg"); c.beginPath(); c.roundRect(-11, -6, 22, 12, 3); c.fill();
+  c.fillStyle = css("--bg"); c.fillRect(2, -4, 5, 8);
+  c.restore();
+}
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function tick() { carT += 0.012; drawMap(); if (!reduce) requestAnimationFrame(tick); }
+addEventListener("resize", drawMap);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawMap);
+
+/* ---------- address autocomplete (Arkansas only) ---------- */
+const AR_BBOX = "-94.62,33.00,-89.64,36.50";
+let suggestSeq = 0, suggestTimer = null, suggestItems = [], activeIdx = -1;
+
+function formatPlace(p, typedNum) {
+  if (p.state !== "Arkansas") return null;
+  const street = p.street || (p.type === "street" ? p.name : null);
+  if (!street) return null;
+  const num = p.housenumber || typedNum;
+  const line1 = num ? `${num} ${street}` : street;
+  const city = p.city || p.district || p.county || "";
+  const line2 = [city, `AR${p.postcode ? " " + p.postcode : ""}`].filter(Boolean).join(", ");
+  return { line1, line2, full: `${line1}, ${line2}`, hasNum: !!num };
+}
+
+async function fetchSuggestions(q) {
+  const seq = ++suggestSeq;
+  const typedNum = (q.match(/^\s*(\d+[A-Za-z]?)\s+/) || [])[1] || "";
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q + " Arkansas")}&limit=10&lang=en` +
+    `&lat=${CFG.PARTY_LAT}&lon=${CFG.PARTY_LON}&bbox=${AR_BBOX}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    if (seq !== suggestSeq) return;
+    const seen = new Set(), out = [];
+    for (const f of data.features || []) {
+      const s = formatPlace(f.properties || {}, typedNum);
+      if (s && !seen.has(s.full)) { seen.add(s.full); out.push(s); }
+      if (out.length >= 5) break;
+    }
+    showSuggestions(out);
+  } catch {
+    if (seq === suggestSeq) showSuggestions([]);
+  }
+}
+
+function showSuggestions(items) {
+  const list = $("suggest");
+  if (!list) return;
+  suggestItems = items; activeIdx = -1;
+  if (!items.length) { list.hidden = true; list.innerHTML = ""; return; }
+  list.innerHTML = "";
+  items.forEach((s, i) => {
+    const li = document.createElement("li"), b = document.createElement("button");
+    b.type = "button"; b.setAttribute("role", "option"); b.id = "sug" + i;
+    b.innerHTML = `<span class="pin"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg></span><span><span class="a1"></span><span class="a2"></span></span>`;
+    b.querySelector(".a1").textContent = s.line1;
+    b.querySelector(".a2").textContent = s.line2;
+    b.addEventListener("mousedown", e => e.preventDefault());
+    b.addEventListener("click", () => pickSuggestion(i));
+    li.append(b); list.append(li);
+  });
+  const note = document.createElement("li");
+  note.className = "note"; note.textContent = "Not listed? Just finish typing your full address.";
+  list.append(note);
+  list.hidden = false;
+}
+
+function pickSuggestion(i) {
+  const s = suggestItems[i], a = $("addr");
+  if (!s) return;
+  a.value = s.full;
+  state.address = a.value; store.set("sr_addr", a.value);
+  showSuggestions([]);
+  if (!s.hasNum) { a.focus(); a.setSelectionRange(0, 0); toast("Add your house number at the start"); }
+}
+
+function wireAddress(a) {
+  a.value = state.address;
+  a.setAttribute("role", "combobox");
+  a.setAttribute("aria-autocomplete", "list");
+  a.setAttribute("aria-controls", "suggest");
+  a.addEventListener("input", () => {
+    state.address = a.value; store.set("sr_addr", a.value);
+    clearTimeout(suggestTimer);
+    const q = a.value.trim();
+    if (q.length < 4) { suggestSeq++; showSuggestions([]); return; }
+    suggestTimer = setTimeout(() => fetchSuggestions(q), 300);
+  });
+  a.addEventListener("keydown", e => {
+    if (!suggestItems.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      activeIdx = (activeIdx + (e.key === "ArrowDown" ? 1 : -1) + suggestItems.length) % suggestItems.length;
+      document.querySelectorAll(".suggest li button").forEach((b, i) => b.classList.toggle("active", i === activeIdx));
+      a.setAttribute("aria-activedescendant", "sug" + activeIdx);
+    } else if (e.key === "Enter" && activeIdx >= 0) {
+      e.preventDefault(); pickSuggestion(activeIdx);
+    } else if (e.key === "Escape") {
+      showSuggestions([]);
+    }
+  });
+  a.addEventListener("blur", () => setTimeout(() => showSuggestions([]), 150));
+}
+
+/* ---------- form ---------- */
+function renderRoute() {
+  const addr = `<input type="text" id="addr" autocomplete="street-address" placeholder="Start typing your address"><ul class="suggest" id="suggest" role="listbox" hidden></ul>`;
+  const party = `<div class="fixed">${CFG.PARTY_NAME}<small>${CFG.PARTY_ADDR}</small></div>`;
+  const back = `<div class="fixed">Back home<small>Same address</small></div>`;
+  const row = (l, body, f) => `<div class="row">${f ? `<label for="addr">${l}</label>` : `<span class="lbl">${l}</span>`}${body}</div>`;
+  $("routeRows").innerHTML =
+    state.dir === "to" ? row("Pickup", addr, 1) + row("Drop-off", party)
+    : state.dir === "home" ? row("Pickup", party) + row("Drop-off", addr, 1)
+    : row("Pickup", addr, 1) + row("Party", party) + row("Then", back);
+  $("rail").innerHTML = state.dir === "round" ? "<i></i><s></s><i class='sq'></i><s></s><i></i>" : "<i></i><s></s><i class='sq'></i>";
+  wireAddress($("addr"));
+  for (const [id, d] of [["dirRound", "round"], ["dirTo", "to"], ["dirHome", "home"]]) $(id).setAttribute("aria-pressed", state.dir === d);
+  $("returnWrap").hidden = state.dir !== "round";
+  $("whenLabel").textContent = state.dir === "round" ? "Pickup to the party" : "When";
+  $("requestBtn").textContent = { round: "Request there & back", to: "Request Sam X", home: "Request a ride home" }[state.dir];
+  $("optMeta").textContent = { round: "Door to door · both ways", to: "Door to door · straight to the party", home: "Door to door · home safe" }[state.dir];
+  drawMap();
+}
+$("dirRound").onclick = () => { state.dir = "round"; renderRoute(); };
+$("dirTo").onclick = () => { state.dir = "to"; renderRoute(); };
+$("dirHome").onclick = () => { state.dir = "home"; renderRoute(); };
+
+function setRet(r) {
+  state.ret = r;
+  $("retText").setAttribute("aria-pressed", r === "text");
+  $("retTime").setAttribute("aria-pressed", r === "time");
+  $("retTimeWrap").hidden = r !== "time";
+}
+$("retText").onclick = () => setRet("text");
+$("retTime").onclick = () => setRet("time");
+
+function setWhen(w) {
+  state.when = w;
+  $("whenNow").setAttribute("aria-pressed", w === "now");
+  $("whenLater").setAttribute("aria-pressed", w === "later");
+  $("timeWrap").hidden = w !== "later";
+}
+$("whenNow").onclick = () => setWhen("now");
+$("whenLater").onclick = () => setWhen("later");
+
+function setRiders(n) { state.riders = Math.max(1, Math.min(4, n)); $("count").textContent = state.riders; }
+$("minus").onclick = () => setRiders(state.riders - 1);
+$("plus").onclick = () => setRiders(state.riders + 1);
+
+function fmtTime(v) {
+  const [h, m] = v.split(":").map(Number);
+  return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
+function buildMessage(b) {
+  const lines = b.trip === "round" ? [
+    `🚗 Sam's Rides request: THERE & BACK`,
+    `Name: ${b.name}`,
+    `Pick up at: ${b.address}`,
+    `Party: ${PARTY_FULL}`,
+    `Pickup time: ${b.pickupTime}`,
+    `Ride home: ${b.returnTime}`,
+    `Riders: ${b.riders}`
+  ] : [
+    `🚗 Sam's Rides request`,
+    `Name: ${b.name}`,
+    b.trip === "to" ? `Pick up at: ${b.address}` : `Pick up at: ${PARTY_FULL}`,
+    b.trip === "to" ? `Drop off: ${PARTY_FULL}` : `Drop off at: ${b.address}`,
+    `When: ${b.pickupTime}`,
+    `Riders: ${b.riders}`
+  ];
+  if (b.phone) lines.push(`My number: ${b.phone}`);
+  if (b.note) lines.push(`Note: ${b.note}`);
+  return lines.join("\n");
+}
+
+function smsHref(body) {
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  return `sms:${CFG.DRIVER_PHONE}${ios ? "&" : "?"}body=${encodeURIComponent(body)}`;
+}
+
+/* Save the booking to Sam's Google Sheet. Returns "ok", "maybe" (sent, no reply readable) or "fail". */
+async function saveBooking(b) {
+  if (!CFG.BOOKING_URL) return "fail";
+  const body = JSON.stringify(b);
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20000);
+  try {
+    const res = await fetch(CFG.BOOKING_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body, signal: ctl.signal });
+    const j = await res.json();
+    return j.ok ? "ok" : "fail";
+  } catch (e) {
+    if (e.name === "AbortError") return "fail";
+    // Some browsers block reading Google's reply; send again without reading it (duplicates are ignored by id).
+    try { await fetch(CFG.BOOKING_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body }); return "maybe"; }
+    catch { return "fail"; }
+  } finally { clearTimeout(timer); }
+}
+
+let current = null;
+$("book").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("name").value.trim(), address = state.address.trim();
+  const missing = [!name && "your name", !address && "your address"].filter(Boolean);
+  if (missing.length) { $("err").textContent = `Please add ${missing.join(" and ")}.`; $("err").hidden = false; return; }
+  $("err").hidden = true;
+  store.set("sr_name", name); store.set("sr_phone", $("phone").value.trim());
+  current = {
+    id: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(36).slice(2)),
+    name, address, trip: state.dir, riders: state.riders,
+    phone: $("phone").value.trim(), note: $("note").value.trim(),
+    pickupTime: state.when === "now" ? "As soon as you can" : fmtTime($("time").value || "18:00"),
+    returnTime: state.dir !== "round" ? "" : state.ret === "text" ? "Will text when ready" : fmtTime($("returnTime").value || "21:00")
+  };
+  showConfirm();
+  const result = await saveBooking(current);
+  showResult(result);
+});
+
+function showConfirm() {
+  const msg = buildMessage(current);
+  $("msg").textContent = msg;
+  $("smsLink").href = smsHref(msg);
+  $("smsExtra").href = smsHref(msg);
+  $("numText").textContent = CFG.DRIVER_PHONE_DISPLAY;
+  const rows = current.trip === "round" ? [
+    ["Trip", TRIP_LABEL.round], ["Pickup", current.address], ["Party", CFG.PARTY_ADDR],
+    ["Pickup time", current.pickupTime], ["Ride home", current.returnTime]
+  ] : [
+    ["Trip", TRIP_LABEL[current.trip]],
+    ["Pickup", current.trip === "to" ? current.address : CFG.PARTY_ADDR],
+    ["Drop-off", current.trip === "to" ? CFG.PARTY_ADDR : current.address],
+    ["When", current.pickupTime]
+  ];
+  rows.push(["Riders", String(current.riders)], ["Fare", "$0.00"]);
+  $("receipt").innerHTML = "";
+  for (const [k, v] of rows) {
+    const d = document.createElement("div"), dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = k; dd.textContent = v; d.append(dt, dd); $("receipt").append(d);
+  }
+  $("status").className = "status";
+  $("progress").hidden = false;
+  $("confirmTitle").textContent = "Sending your request…";
+  $("confirmSub").textContent = "Hang tight, this takes a second.";
+  $("textPanel").hidden = true; $("smsExtra").hidden = true;
+  $("etaPill").textContent = "Contacting Sam";
+  $("book").hidden = true; $("confirm").hidden = false;
+  scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+}
+
+function showResult(result) {
+  $("progress").hidden = true;
+  const first = current.name.split(" ")[0];
+  if (result === "fail") {
+    $("status").className = "status warn";
+    $("confirmTitle").textContent = "Text Sam to finish booking";
+    $("confirmSub").textContent = "We couldn't reach Sam's booking list, so send your request by text. The button fills it all in for you.";
+    $("textPanel").hidden = false;
+    $("etaPill").textContent = "Waiting for your text";
+  } else {
+    $("status").className = "status done";
+    $("confirmTitle").textContent = "You're booked!";
+    $("confirmSub").textContent = `Thanks, ${first}! Sam has your request and will text you to confirm.`;
+    $("smsExtra").hidden = false;
+    $("etaPill").textContent = "Ride requested";
+  }
+}
+
+$("back").onclick = () => { $("confirm").hidden = true; $("book").hidden = false; $("etaPill").textContent = "Sam is nearby"; };
+
+function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2000); }
+function legacyCopy(text) {
+  const ta = document.createElement("textarea");
+  ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.append(ta); ta.select(); ta.setSelectionRange(0, text.length);
+  let ok = false; try { ok = document.execCommand("copy"); } catch {}
+  ta.remove(); return ok;
+}
+async function copy(text, done, btn) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch { ok = legacyCopy(text); }
+  if (!ok) { toast("Press and hold the text to copy it"); return; }
+  toast(done);
+  const t = btn.textContent; btn.textContent = "Copied ✓"; btn.classList.add("copied");
+  setTimeout(() => { btn.textContent = t; btn.classList.remove("copied"); }, 2200);
+}
+$("copyMsg").onclick = () => copy($("msg").textContent, "Request copied", $("copyMsg"));
+$("copyNum").onclick = () => copy(CFG.DRIVER_PHONE_DISPLAY, "Number copied", $("copyNum"));
+
+/* ---------- start ---------- */
+$("name").value = store.get("sr_name");
+$("phone").value = store.get("sr_phone");
+state.address = store.get("sr_addr");
+if ($("name").value) $("greet").textContent = `Hi ${$("name").value.split(" ")[0]}, where to?`;
+renderRoute();
+tick();
+</script>
+</body>
+</html>
